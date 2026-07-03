@@ -313,7 +313,8 @@ class Converter:
     # ------------------------------------------------------------------
 
     def _table_cell_text(self, element: Tag) -> str:
-        """Extract cell content, converting <br> to preserved line breaks."""
+        """Extract cell content, converting <br> and nested newlines
+        to MD-compatible inline line breaks."""
         parts: list[str] = []
         for child in element.children:
             if isinstance(child, NavigableString):
@@ -323,8 +324,12 @@ class Converter:
             else:
                 parts.append(self._convert_element(child))
         text = "".join(parts).strip()
-        # Collapse whitespace but keep <br>
+        # Convert newlines from nested elements (ul/li etc.) to <br>
+        text = text.replace("\n", "<br>")
+        # Collapse whitespace but preserve <br> tags
         text = " ".join(text.split())
+        # Clean up whitespace around <br> tags
+        text = text.replace(" <br>", "<br>").replace("<br> ", "<br>")
         return text
 
     # ------------------------------------------------------------------
