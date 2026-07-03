@@ -45,6 +45,14 @@ class ImageProcessor:
     def _process_single(self, img: Tag, output_dir: Path) -> None:
         """Process a single <img> tag."""
         src = img.get("src", "")
+
+        # Fandom lazy-loading: real image is in data-src,
+        # src is a 1x1 placeholder. Use data-src when available.
+        data_src = img.get("data-src", "")
+        if data_src and not self.is_base64(data_src):
+            img["src"] = data_src
+            src = data_src
+
         if not src:
             self.collector.warn("Image with no src attribute", img)
             return
@@ -82,6 +90,14 @@ class ImageProcessor:
         # Normalize extensions
         ext_map = {"jpeg": "jpg", "svg+xml": "svg"}
         ext = ext_map.get(ext, ext)
+
+        # URL-decode (Fandom encodes '=' as '%3D') and fix padding
+        from urllib.parse import unquote
+        data = unquote(data)
+        # Add missing padding
+        missing = len(data) % 4
+        if missing:
+            data += "=" * (4 - missing)
 
         try:
             image_bytes = base64.b64decode(data)

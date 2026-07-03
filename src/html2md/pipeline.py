@@ -89,6 +89,14 @@ class Pipeline:
         doc = self.extractor.extract(input_path)
         soup = doc.body_soup
 
+        # Auto-detect base_url from canonical link if not configured
+        if not self.strategy.links.base_url:
+            canonical = soup.find("link", rel="canonical")
+            if canonical and canonical.get("href"):
+                from urllib.parse import urlparse
+                parsed = urlparse(canonical["href"])
+                self.strategy.links.base_url = f"{parsed.scheme}://{parsed.netloc}"
+
         # Get the main content area
         main_content = self.extractor.get_main_content(soup)
         if main_content is None:

@@ -85,6 +85,10 @@ class Extractor:
             for toc in soup.select("#toc, .toc, .mw-toc, nav.toc"):
                 toc.decompose()
 
+        # Remove <noscript> fallback content (avoids duplicate images etc.)
+        for el in soup.find_all("noscript"):
+            el.decompose()
+
         # Remove elements specified in strategy
         for selector in self.strategy.content.remove_selectors:
             for el in soup.select(selector):
