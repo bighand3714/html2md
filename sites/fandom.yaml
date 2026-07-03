@@ -1,0 +1,50 @@
+name: "Fandom Wiki"
+site_id: fandom
+url_patterns:
+  - "fandom.com"
+  - "wikia.com"
+meta_selectors:
+  - "meta[property='og:site_name']"
+  - "link[rel='canonical'][href*='fandom.com']"
+encoding: utf-8
+
+content:
+  main_selector: ".mw-parser-output"
+  title_selector: "#firstHeading"
+  subtitle_selector: null
+  remove_selectors:
+    - ".mw-editsection"
+    - "[role='navigation']"
+    - ".mw-jump-link"
+    - ".page-header__actions"
+    - ".wds-global-navigation"
+    - ".global-footer"
+    - ".article-categories"
+    - ".page-footer"
+
+citations:
+  superscript_selector: "sup.reference"
+  cite_href_pattern: "#cite_note-(.+)"
+  display_number_attr: null
+  notes_pattern: "^[a-z]$"
+  refs_pattern: "^\\d+$"
+  references_container_selector: ".mw-references-wrap ol.references, ol.references"
+  reference_item_selector: "li"
+  reference_item_id_attr: "id"
+  reference_item_id_prefix: "cite_note-"
+
+elements:
+  infobox_handling: "table"
+  toc_handling: "remove"
+  heading_offset: 0
+  template_selectors:
+    - ".navbox"
+    - ".NavFrame"
+    - ".notice-template"
+    - ".ambox"
+    - ".portable-infobox"
+
+links:
+  base_url: ""
+  external_link_sections:
+    - "#External_links"

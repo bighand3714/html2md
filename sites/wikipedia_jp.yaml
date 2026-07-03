@@ -1,0 +1,48 @@
+name: "Wikipedia Japanese"
+site_id: wikipedia_jp
+url_patterns:
+  - "ja.wikipedia.org"
+meta_selectors:
+  - "meta[property='og:site_name'][content='Wikipedia']"
+  - "link[rel='canonical'][href*='ja.wikipedia.org']"
+encoding: utf-8
+
+content:
+  main_selector: ".mw-parser-output"
+  title_selector: "#firstHeading"
+  subtitle_selector: "#siteSub"
+  remove_selectors:
+    - ".mw-editsection"
+    - "[role='navigation']"
+    - ".mw-jump-link"
+    - ".sister-wiki"
+    - ".mw-indicators"
+    - ".mw-empty-elt"
+    - ".noprint"
+    - ".portal"
+
+citations:
+  superscript_selector: "sup.reference"
+  cite_href_pattern: "#cite_note-(.+)"
+  display_number_attr: "data-mw-footnote-number"
+  notes_pattern: "^[a-z]$"
+  refs_pattern: "^\\d+$"
+  references_container_selector: "section[data-mw-group] ol.references, .mw-references-wrap ol.references"
+  reference_item_selector: "li"
+  reference_item_id_attr: "id"
+  reference_item_id_prefix: "cite_note-"
+
+elements:
+  infobox_handling: "table"
+  toc_handling: "remove"
+  heading_offset: 0
+  template_selectors:
+    - ".navbox"
+    - ".NavFrame"
+    - ".metadata"
+    - ".ambox"
+
+links:
+  base_url: "https://ja.wikipedia.org"
+  external_link_sections:
+    - "#外部リンク"

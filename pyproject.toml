@@ -1,0 +1,23 @@
+[project]
+name = "html2md"
+version = "0.1.0"
+description = "Convert Wiki HTML pages to Obsidian-compatible Markdown"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+html2md = "html2md.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"

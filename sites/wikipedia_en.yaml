@@ -1,0 +1,53 @@
+name: "Wikipedia English"
+site_id: wikipedia_en
+url_patterns:
+  - "en.wikipedia.org"
+meta_selectors:
+  - "meta[property='og:site_name'][content='Wikipedia']"
+  - "link[rel='canonical'][href*='en.wikipedia.org']"
+encoding: utf-8
+
+content:
+  main_selector: ".mw-parser-output"
+  title_selector: "#firstHeading"
+  subtitle_selector: "#siteSub"
+  remove_selectors:
+    - ".mw-editsection"
+    - "[role='navigation']"
+    - ".mw-jump-link"
+    - ".sister-wiki"
+    - ".mw-indicators"
+    - ".mw-empty-elt"
+    - ".noprint"
+    - ".portal"
+
+citations:
+  superscript_selector: "sup.reference"
+  cite_href_pattern: "#cite_(?:note|ref)-(.+)"
+  display_number_attr: "data-mw-footnote-number"
+  notes_pattern: "^[a-z]$"
+  refs_pattern: "^\\d+$"
+  references_container_selector: "section[data-mw-group] ol.references, .mw-references-wrap ol.references"
+  reference_item_selector: "li"
+  reference_item_id_attr: "id"
+  reference_item_id_prefix: "cite_note-"
+  reference_item_id_prefixes:
+    - "cite_ref-"
+
+elements:
+  infobox_handling: "table"
+  toc_handling: "remove"
+  heading_offset: 0
+  template_selectors:
+    - ".navbox"
+    - ".NavFrame"
+    - ".metadata"
+    - ".mbox-small"
+    - ".ambox"
+    - ".tmbox"
+
+links:
+  base_url: "https://en.wikipedia.org"
+  external_link_sections:
+    - "#External_links"
+    - "#Further_reading"
