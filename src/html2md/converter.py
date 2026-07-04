@@ -270,7 +270,13 @@ class Converter:
     # ------------------------------------------------------------------
 
     def _figure_to_md(self, element: Tag) -> str:
-        """Convert <figure> containing <img> and <figcaption>."""
+        """Convert <figure> containing <img> and <figcaption>.
+
+        Figures without an <img> (audio players, video, metadata)
+        are skipped — they have no meaningful Markdown equivalent.
+        """
+        if not element.find("img"):
+            return ""
         parts: list[str] = []
         for child in element.children:
             if isinstance(child, Tag) and child.name == "img":
@@ -284,7 +290,11 @@ class Converter:
         return "\n\n" + "\n\n".join(parts) + "\n\n"
 
     def _figcaption_to_md(self, element: Tag) -> str:
-        return f"*{self._children_text(element)}*"
+        # Remove Fandom info-icon links (file page icons) — decorative,
+        # the parent figure image already links to the full-size CDN URL.
+        for icon in element.select("a.info-icon"):
+            icon.decompose()
+        return self._children_text(element).strip()
 
     # ------------------------------------------------------------------
     # Tables (delegates to TableConverter)
