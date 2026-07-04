@@ -206,8 +206,8 @@ class Converter:
             # Escaped pipe (\|) avoids table column-separator conflicts.
             width = img.get("width", "")
             if width and "Special:FilePath" in src:
-                return f"[![{alt}\\|{width}]({src})]({href})"
-            return f"[![{alt}]({src})]({href})"
+                return f"\n\n[![{alt}\\|{width}]({src})]({href})\n\n"
+            return f"\n\n[![{alt}]({src})]({href})\n\n"
 
         text = self._children_text(element)
         if not text:
@@ -238,9 +238,9 @@ class Converter:
         # Escaped pipe (\|) avoids table column-separator conflicts.
         width = element.get("width", "")
         if width and "Special:FilePath" in src:
-            return f"![{alt}\\|{width}]({src})"
+            return f"\n\n![{alt}\\|{width}]({src})\n\n"
 
-        return f"![{alt}]({src})"
+        return f"\n\n![{alt}]({src})\n\n"
 
     # ------------------------------------------------------------------
     # Code blocks

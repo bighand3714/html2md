@@ -53,6 +53,13 @@ class ImageProcessor:
             img["src"] = data_src
             src = data_src
 
+        # Browser "Save As" sometimes preserves the original CDN URL
+        # in data-savepage-src even when src is rewritten to base64.
+        savepage_src = img.get("data-savepage-src", "")
+        if savepage_src and not self.is_base64(savepage_src):
+            img["src"] = savepage_src
+            src = savepage_src
+
         if not src:
             self.collector.warn("Image with no src attribute", img)
             return
