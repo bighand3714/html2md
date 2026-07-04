@@ -63,6 +63,15 @@ class ImageProcessor:
                 img["src"] = new_src
             except Exception as e:
                 self.collector.warn(f"Failed to extract base64 image: {e}", img)
+        elif not src.startswith(("http://", "https://", "data:", "img/", "//")):
+            # Local path from browser "Save As" — src was rewritten
+            # to a relative file path. Try to recover the original URL
+            # from Wikipedia's resource attribute.
+            resource = img.get("resource", "")
+            if resource:
+                new_src = self._resolve_resource_url(resource)
+                if new_src:
+                    img["src"] = new_src
         else:
             # External URL: keep as-is. The converter will handle the
             # [![](url)](link_url) wrapping if the img is inside an <a> tag.
@@ -118,3 +127,40 @@ class ImageProcessor:
             f.write(image_bytes)
 
         return f"img/{filename}"
+
+    @staticmethod
+    def _resolve_resource_url(resource: str) -> str | None:
+        """Convert a Wikipedia resource attribute to a working image URL.
+
+        Browser "Save As" rewrites img src to local paths but preserves
+        the original File: page URL in the resource attribute, e.g.:
+            resource="//en.wikipedia.org/wiki/File:Hideo_Kojima.jpg"
+
+        We build a Special:FilePath URL that 302-redirects to the
+        actual image on upload.wikimedia.org.
+
+        Returns:
+            Absolute image URL, or None if resource can't be parsed.
+        """
+        from urllib.parse import urlparse, unquote
+
+        if resource.startswith("//"):
+            resource = "https:" + resource
+
+        parsed = urlparse(resource)
+        domain = parsed.netloc
+        path = unquote(parsed.path)
+
+        # Extract filename from /wiki/File:XXX or /wiki/ファイル:XXX
+        match = re.match(
+            r"/wiki/(?:File|ファイル|檔案|Archivo|Fichier|Datei):(.+)",
+            path, re.IGNORECASE,
+        )
+        if not match:
+            return None
+
+        filename = match.group(1).strip()
+        if not filename:
+            return None
+
+        return f"https://{domain}/wiki/Special:FilePath/{filename}"

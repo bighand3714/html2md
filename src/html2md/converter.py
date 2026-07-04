@@ -201,6 +201,11 @@ class Converter:
             alt = img.get("alt", "")
             if self._base_url and src and not src.startswith(("http://", "https://", "data:", "img/")):
                 src = urljoin(self._base_url, src)
+            # Apply display width for Wikipedia Special:FilePath images.
+            # Escaped pipe (\|) avoids table column-separator conflicts.
+            width = img.get("width", "")
+            if width and "Special:FilePath" in src:
+                return f"[![{alt}\\|{width}]({src})]({href})"
             return f"[![{alt}]({src})]({href})"
 
         text = self._children_text(element)
@@ -210,7 +215,14 @@ class Converter:
         return f"[{text}]({href})"
 
     def _image_to_md(self, element: Tag) -> str:
-        """Convert <img> to ![](url)."""
+        """Convert <img> to ![](url).
+
+        Wikipedia Special:FilePath URLs return full-resolution originals
+        (e.g. 4480px wide). We apply the HTML width attribute via
+        Obsidian's |WIDTH syntax so images render at the intended size.
+        Fandom and other CDN images (which already serve resized
+        thumbnails) are not affected.
+        """
         src = element.get("src", "")
         alt = element.get("alt", "")
 
@@ -220,6 +232,12 @@ class Converter:
         # Resolve relative URLs for images
         if self._base_url and not src.startswith(("http://", "https://", "data:", "img/")):
             src = urljoin(self._base_url, src)
+
+        # Apply display width for Wikipedia images (special:filepath returns original).
+        # Escaped pipe (\|) avoids table column-separator conflicts.
+        width = element.get("width", "")
+        if width and "Special:FilePath" in src:
+            return f"![{alt}\\|{width}]({src})"
 
         return f"![{alt}]({src})"
 
