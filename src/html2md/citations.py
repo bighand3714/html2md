@@ -155,7 +155,12 @@ class CitationMapper:
             text = backlinks[0].get_text(strip=True)
             # Filter out non-meaningful values: arrows, carets, empty
             if text and not re.match(r"^[↑^↓↩↪↵]+$", text):
-                return text
+                # Skip single lowercase letters — these are occurrence
+                # markers (a, b, c...) used by Fandom/ZeldaWiki backlinks,
+                # not actual citation display numbers. Fall through to
+                # Method 3 which extracts the real number from cite_id.
+                if not re.match(r"^[a-z]$", text):
+                    return text
 
         # Method 3: Last resort - use suffix of cite_id
         parts = cite_id.rsplit("-", 1)
@@ -183,6 +188,7 @@ class CitationMapper:
         """Extract clean text from a citation <li> element.
 
         Removes backlinks (^ a b c links), leaving only the citation content.
+        External links in citation text are preserved as Markdown [text](url).
         """
         # Work on a copy to avoid mutating the original
         clone = copy_for_text(item)
@@ -196,6 +202,17 @@ class CitationMapper:
         # Also remove jump-to links
         for jumplink in clone.find_all("a", class_="mw-jump-link"):
             jumplink.decompose()
+
+        # Convert remaining <a> tags to Markdown [text](url) format
+        # before get_text() strips all HTML. This preserves external
+        # links inside citation text (e.g. IGN articles, news sources).
+        for link in clone.find_all("a"):
+            href = link.get("href", "")
+            text = link.get_text(strip=True)
+            if href and text:
+                link.replace_with(f"[{text}]({href})")
+            elif text:
+                link.replace_with(text)
 
         text = clone.get_text(separator=" ", strip=True)
         return clean_inline_html(text)
@@ -387,8 +404,14 @@ class CitationMapper:
         # Remove original References DOM elements (keep Notes)
         self.remove_references_dom_elements(soup)
 
-        notes = [c for c in used.values() if c.is_note]
-        refs = [c for c in used.values() if not c.is_note]
+        # Include ALL bottom citations, not just those referenced in body.
+        # This preserves unreferenced entries so users can manually fix
+        # citation mapping issues without losing data. Citations that were
+        # referenced have their ref_count already incremented by
+        # replace_superscripts (they are the same Python objects).
+        all_citations = list(bottom_citations.values())
+        notes = [c for c in all_citations if c.is_note]
+        refs = [c for c in all_citations if not c.is_note]
 
         return CitationResult(notes=notes, references=refs)
 
