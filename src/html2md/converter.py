@@ -204,14 +204,20 @@ class Converter:
                 src = urljoin(self._base_url, src)
             # Apply display width for Wikipedia Special:FilePath images.
             # Escaped pipe (\|) avoids table column-separator conflicts.
+            nl = "" if self._in_table(element) else "\n\n"
             width = img.get("width", "")
             if width and "Special:FilePath" in src:
-                return f"\n\n[![{alt}\\|{width}]({src})]({href})\n\n"
-            return f"\n\n[![{alt}]({src})]({href})\n\n"
+                return f"{nl}[![{alt}\\|{width}]({src})]({href}){nl}"
+            return f"{nl}[![{alt}]({src})]({href}){nl}"
 
         text = self._children_text(element)
         if not text:
             text = href
+
+        # Strip surrounding brackets from link text
+        # (Fandom wraps "[source]" links in literal brackets)
+        if text.startswith("[") and text.endswith("]"):
+            text = text[1:-1]
 
         return f"[{text}]({href})"
 
@@ -236,11 +242,12 @@ class Converter:
 
         # Apply display width for Wikipedia images (special:filepath returns original).
         # Escaped pipe (\|) avoids table column-separator conflicts.
+        nl = "" if self._in_table(element) else "\n\n"
         width = element.get("width", "")
         if width and "Special:FilePath" in src:
-            return f"\n\n![{alt}\\|{width}]({src})\n\n"
+            return f"{nl}![{alt}\\|{width}]({src}){nl}"
 
-        return f"\n\n![{alt}]({src})\n\n"
+        return f"{nl}![{alt}]({src}){nl}"
 
     # ------------------------------------------------------------------
     # Code blocks
@@ -456,6 +463,19 @@ class Converter:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _in_table(element: Tag) -> bool:
+        """Check if an element is inside a table cell (<td>, <th>,
+        or Fandom infobox .pi-data)."""
+        p = element.parent
+        while p:
+            if p.name in ("td", "th"):
+                return True
+            if "pi-data" in (p.get("class") or []):
+                return True
+            p = p.parent
+        return False
 
     def _children_text(self, element: Tag) -> str:
         """Recursively convert all children to Markdown and join."""
