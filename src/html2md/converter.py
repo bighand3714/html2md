@@ -100,6 +100,7 @@ class Converter:
             "figure": self._figure_to_md,
             "figcaption": lambda e: f"\n*{self._children_text(e)}*\n",
             "table": self._table_to_md,
+            "aside": self._infobox_to_md,
         }
 
         handler = handlers.get(tag_name)
@@ -349,6 +350,98 @@ class Converter:
         # Clean up whitespace around <br> tags
         text = text.replace(" <br>", "<br>").replace("<br> ", "<br>")
         return text
+
+    # ------------------------------------------------------------------
+    # Infobox (Fandom/ZeldaWiki portable infobox)
+    # ------------------------------------------------------------------
+
+    def _infobox_to_md(self, element: Tag) -> str:
+        """Convert aside.portable-infobox to Markdown tables.
+
+        Fandom's infobox is an <aside> containing a title, tabbed image
+        gallery, and groups of key-value rows. Each group becomes a
+        small table; images are extracted inline.
+        """
+        if "portable-infobox" not in (element.get("class") or []):
+            return self._children_text(element)
+
+        parts: list[str] = []
+
+        # Extract all tab images as linked Markdown.
+        # Base64 placeholders are replaced with CDN thumbnail URLs
+        # derived from the parent <a> href.
+        for img in element.select("img.pi-image-thumbnail"):
+            alt = img.get("alt", "")
+            parent_a = img.find_parent("a")
+            if parent_a and parent_a.get("href"):
+                href = parent_a["href"]
+                # Derive CDN thumbnail URL from full image URL
+                parts.append(
+                    f"[![{alt}]({self._thumbnail_url(href)})]({href})"
+                )
+            else:
+                parts.append(f"![{alt}]({img.get('src', '')})")
+
+        # Top-level key-value rows (not inside a .pi-group)
+        direct_rows: list[tuple[str, str]] = []
+        for data in element.select(":scope > .pi-data"):
+            label_el = data.select_one(".pi-data-label")
+            value_el = data.select_one(".pi-data-value")
+            label = label_el.get_text(strip=True) if label_el else ""
+            value = self._table_cell_text(value_el).strip() if value_el else ""
+            if label or value:
+                direct_rows.append((label, value))
+        if direct_rows:
+            parts.append(self._infobox_table(None, direct_rows))
+
+        # Grouped key-value rows
+        for group in element.select(".pi-group"):
+            header = group.select_one(".pi-header")
+            header_text = header.get_text(strip=True) if header else ""
+
+            rows: list[tuple[str, str]] = []
+            for data in group.select(".pi-data"):
+                label_el = data.select_one(".pi-data-label")
+                value_el = data.select_one(".pi-data-value")
+                label = label_el.get_text(strip=True) if label_el else ""
+                value = self._table_cell_text(value_el).strip() if value_el else ""
+                if label or value:
+                    rows.append((label, value))
+
+            if rows:
+                parts.append(self._infobox_table(header_text, rows))
+
+        return "".join(parts)
+
+    def _infobox_table(
+        self, header: str | None, rows: list[tuple[str, str]]
+    ) -> str:
+        """Build a Markdown table for an infobox section."""
+        lines: list[str] = []
+        if header:
+            lines.append(f"| **{header}** | |")
+        else:
+            lines.append("| | |")
+        lines.append("|---|---|")
+        for label, value in rows:
+            lines.append(f"| {label} | {value} |")
+        return "\n\n" + "\n".join(lines) + "\n\n"
+
+    @staticmethod
+    def _thumbnail_url(full_url: str, width: int = 250) -> str:
+        """Derive a Fandom CDN thumbnail URL from a full image URL.
+
+        Inserts /scale-to-width-down/{width} before the query string.
+        E.g. .../revision/latest?cb=... → .../revision/latest/scale-to-width-down/250?cb=...
+        """
+        if "static.wikia.nocookie.net" not in full_url:
+            return full_url
+        if "/revision/latest" in full_url:
+            return full_url.replace(
+                "/revision/latest",
+                f"/revision/latest/scale-to-width-down/{width}",
+            )
+        return full_url
 
     # ------------------------------------------------------------------
     # Helpers

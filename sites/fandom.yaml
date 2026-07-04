@@ -42,7 +42,6 @@ elements:
     - ".NavFrame"
     - ".notice-template"
     - ".ambox"
-    - ".portable-infobox"
 
 links:
   base_url: ""

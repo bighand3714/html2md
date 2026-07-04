@@ -38,7 +38,6 @@ elements:
   template_selectors:
     - ".navbox"
     - ".NavFrame"
-    - ".portable-infobox"
 
 links:
   base_url: ""
