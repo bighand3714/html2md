@@ -7,6 +7,7 @@ emphasis, and inline formatting.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -129,9 +130,17 @@ class Converter:
 
     def _para_to_md(self, element: Tag) -> str:
         """Convert <p> to Markdown paragraph."""
-        text = " ".join(self._children_text(element).split())
-        # Skip empty paragraphs
-        if not text.strip():
+        text = self._children_text(element)
+        # Normalize horizontal whitespace (spaces, tabs) but preserve
+        # newlines from <br> elements so line breaks survive inside
+        # paragraphs (important for infobox table cells).
+        text = re.sub(r'[ \t\f\r]+', ' ', text)
+        # Remove spaces around newlines
+        text = re.sub(r' *\n *', '\n', text)
+        # Collapse multiple newlines into one
+        text = re.sub(r'\n{2,}', '\n', text)
+        text = text.strip()
+        if not text:
             return ""
         return f"\n\n{text}\n\n"
 
@@ -140,6 +149,8 @@ class Converter:
     # ------------------------------------------------------------------
 
     def _br_to_md(self, element: Tag) -> str:
+        if self._in_table(element):
+            return "<br>"
         return "\n"
 
     def _hr_to_md(self, element: Tag) -> str:
@@ -204,11 +215,12 @@ class Converter:
                 src = urljoin(self._base_url, src)
             # Apply display width for Wikipedia Special:FilePath images.
             # Escaped pipe (\|) avoids table column-separator conflicts.
-            nl = "" if self._in_table(element) else "\n\n"
+            # Image link markdown is inline; block-level spacing is
+            # handled by the parent handler (_figure_to_md, _para_to_md).
             width = img.get("width", "")
             if width and "Special:FilePath" in src:
-                return f"{nl}[![{alt}\\|{width}]({src})]({href}){nl}"
-            return f"{nl}[![{alt}]({src})]({href}){nl}"
+                return f"[![{alt}\\|{width}]({src})]({href})"
+            return f"[![{alt}]({src})]({href})"
 
         text = self._children_text(element)
         if not text:
@@ -229,6 +241,9 @@ class Converter:
         Obsidian's |WIDTH syntax so images render at the intended size.
         Fandom and other CDN images (which already serve resized
         thumbnails) are not affected.
+
+        Image markdown is inline by nature; block-level spacing is
+        handled by the parent handler (_figure_to_md, _para_to_md).
         """
         src = element.get("src", "")
         alt = element.get("alt", "")
@@ -242,12 +257,11 @@ class Converter:
 
         # Apply display width for Wikipedia images (special:filepath returns original).
         # Escaped pipe (\|) avoids table column-separator conflicts.
-        nl = "" if self._in_table(element) else "\n\n"
         width = element.get("width", "")
         if width and "Special:FilePath" in src:
-            return f"{nl}![{alt}\\|{width}]({src}){nl}"
+            return f"![{alt}\\|{width}]({src})"
 
-        return f"{nl}![{alt}]({src}){nl}"
+        return f"![{alt}]({src})"
 
     # ------------------------------------------------------------------
     # Code blocks
