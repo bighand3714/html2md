@@ -4,7 +4,7 @@ url_patterns:
   - "fandom.com"
   - "wikia.com"
 meta_selectors:
-  - "meta[property='og:site_name']"
+  - "meta[property='og:site_name'][content*='Fandom']"
   - "link[rel='canonical'][href*='fandom.com']"
 encoding: utf-8
 

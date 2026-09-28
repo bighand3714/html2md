@@ -5,12 +5,13 @@ url_patterns:
   - "zelda.gamepedia.com"
   - "zelda.fandom.com"
 meta_selectors:
-  - "meta[property='og:site_name']"
+  - "meta[property='og:site_name'][content='Zelda Dungeon Wiki']"
+  - "meta[property='og:site_name'][content='Zelda Wiki']"
   - "link[rel='canonical'][href*='zeldawiki']"
 encoding: utf-8
 
 content:
-  main_selector: ".mw-parser-output"
+  main_selector: "#mw-content-text"
   title_selector: "#firstHeading"
   subtitle_selector: null
   remove_selectors:
@@ -19,6 +20,10 @@ content:
     - ".mw-jump-link"
     - ".page-header__actions"
     - ".mw-indicators"
+    - ".printfooter"
+    - "#catlinks"
+    - ".mw-hidden-catlinks"
+    - ".CategoryTreeBullet"
 
 citations:
   superscript_selector: "sup.reference"
@@ -40,6 +45,6 @@ elements:
     - ".NavFrame"
 
 links:
-  base_url: ""
+  base_url: "https://www.zeldadungeon.net"
   external_link_sections:
     - "#External_links"

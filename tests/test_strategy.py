@@ -27,7 +27,11 @@ class TestStrategyLoading:
         assert "wikipedia_jp" in strategies
         assert "fandom" in strategies
         assert "zeldawiki" in strategies
-        assert len(strategies) == 4
+        assert "zeldadungeon_walkthrough" in strategies
+        assert "nintendo_news" in strategies
+        assert "npr_article" in strategies
+        assert "nintendo_iwata_asks" in strategies
+        assert len(strategies) == 8
 
     def test_content_config_defaults(self):
         config = ContentConfig()

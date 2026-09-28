@@ -78,7 +78,20 @@ def _handle_convert(args) -> None:
     results: list[ConversionInfo] = []
     downloader = Downloader()
 
-    for input_str in args.inputs:
+    inputs: list[str] = []
+    for inp in args.inputs:
+        if not Downloader.is_url(inp) and any(c in inp for c in ["*", "?"]):
+            p = Path(inp)
+            parent = p.parent if str(p.parent) else Path(".")
+            matched = sorted(parent.glob(p.name))
+            if matched:
+                inputs.extend(str(m) for m in matched)
+            else:
+                inputs.append(inp)
+        else:
+            inputs.append(inp)
+
+    for input_str in inputs:
         try:
             # Determine input type and get HTML path
             if Downloader.is_url(input_str):

@@ -38,6 +38,10 @@ html2md list-strategies
 | Wikipedia Japanese | `wikipedia_jp` |
 | Fandom Wiki | `fandom` |
 | ZeldaWiki | `zeldawiki` |
+| Nintendo Iwata Asks | `nintendo_iwata_asks` |
+| Nintendo News | `nintendo_news` |
+| NPR Article | `npr_article` |
+| Zelda Dungeon Walkthrough | `zeldadungeon_walkthrough` |
 
 策略配置文件在 `sites/` 目录，可自行扩展。
 

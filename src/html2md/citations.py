@@ -21,6 +21,7 @@ from .obsidian import (
     format_references_section,
     make_footnote_ref,
     sanitize_footnote_id,
+    separated_inline_text,
 )
 
 if TYPE_CHECKING:
@@ -92,7 +93,22 @@ class CitationMapper:
 
         for container in containers:
 
-            items = container.select(self.config.reference_item_selector)
+            # Only DIRECT children are reference entries. A descendant
+            # selector would also match <li> elements nested inside a
+            # citation's own text (Wikipedia wraps some citation bodies in
+            # <span class="mw-reference-text"><ul><li id="mwXXXX">), whose
+            # auto-generated ids are not citation ids — those would be
+            # registered as separate bogus citations ending up as orphan
+            # footnote definitions.
+            items = [
+                el for el in container.find_all(
+                    self.config.reference_item_selector, recursive=False
+                )
+            ]
+            if not items:
+                # Fall back to a descendant search for containers that wrap
+                # their entries (e.g. inside a nested element).
+                items = container.select(self.config.reference_item_selector)
             for item in items:
                 citation = self._parse_reference_item(item)
                 if citation:
@@ -152,7 +168,11 @@ class CitationMapper:
         # Look for <span class="cite-bracket"> or similar backlink pattern
         backlinks = item.find_all("a", href=re.compile(r"#cite_ref"))
         if backlinks:
-            text = backlinks[0].get_text(strip=True)
+            # NOTE: separated_inline_text (not get_text(strip=True)) — the
+            # accessibility label "<span>Jump up to: </span>1.0" must keep the
+            # space, otherwise the display name diverges from the sanitized
+            # in-text footnote ID ("Jump_up_to_1.0" vs "Jump up to:1.0").
+            text = separated_inline_text(backlinks[0])
             # Filter out non-meaningful values: arrows, carets, empty
             if text and not re.match(r"^[↑^↓↩↪↵]+$", text):
                 # Skip single lowercase letters — these are occurrence
@@ -371,7 +391,10 @@ class CitationMapper:
         refs_defs: list[str] = []
 
         for footnote_id, citation in used_citations.items():
-            definition = format_footnote_definition(footnote_id, citation.text)
+            # Sanitize identically to the in-text marker built by
+            # make_footnote_ref, so "[^ref_X]" and "[^ref_X]:" always match.
+            safe_id = sanitize_footnote_id(footnote_id)
+            definition = format_footnote_definition(safe_id, citation.text)
             if citation.is_note:
                 notes_defs.append(definition)
             else:

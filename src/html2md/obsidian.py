@@ -4,14 +4,42 @@ from __future__ import annotations
 
 import re
 
+from bs4 import Tag
+
+
+def separated_inline_text(tag: Tag) -> str:
+    """Get an element's text while preserving spaces between inline children.
+
+    ``Tag.get_text(strip=True)`` strips every child independently, so a space
+    separating a text node from an inline element is lost::
+
+        <h1><i>The Legend of Zelda</i> (video game)</h1>
+        get_text(strip=True)  -> "The Legend of Zelda(video game)"   # wrong
+        separated_inline_text -> "The Legend of Zelda (video game)"
+
+    The same bug corrupts footnote IDs: a backlink rendered as
+    ``<span>Jump up to: </span>1.0`` collapses to "Jump up to:1.0", which
+    then diverges from the sanitized ID used by the in-text marker.
+
+    A separator of ``" "`` keeps adjacent inline elements apart, and the
+    result is whitespace-normalized so it stays tidy for headings, table
+    cells and infobox labels.
+    """
+    return " ".join(tag.get_text(separator=" ").split())
+
 
 def sanitize_footnote_id(raw: str) -> str:
     """Sanitize a raw ID for use as an Obsidian footnote identifier.
 
     Obsidian footnote IDs must be valid for the [^id] syntax.
     Allowed: alphanumeric, underscores, hyphens, dots.
+
+    Runs of illegal characters collapse into a single underscore and the
+    result is stripped, so a label like "Jump up to: " (note the trailing
+    space) maps to "Jump_up_to" rather than "Jump_up_to_".
     """
-    return re.sub(r"[^a-zA-Z0-9_.\-]", "_", raw)
+    sanitized = re.sub(r"[^a-zA-Z0-9_.\-]+", "_", raw)
+    return sanitized.strip("_")
 
 
 def make_footnote_ref(display_name: str, is_note: bool) -> str:

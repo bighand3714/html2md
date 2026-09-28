@@ -1,0 +1,56 @@
+name: "Nintendo Iwata Asks"
+site_id: nintendo_iwata_asks
+url_patterns:
+  - "nintendo.co.jp/ds/interview"
+  - "nintendo.co.jp/wii/interview"
+  - "nintendo.co.jp/3ds/interview"
+  - "nintendo.co.jp/wiiu/interview"
+meta_selectors:
+  - "meta[name='savepage-url'][content*='interview']"
+  - "meta[name='savepage-from'][content*='interview']"
+encoding: utf-8
+
+content:
+  main_selector: "#wrapper"
+  title_selector: "h1"
+  subtitle_selector: null
+  remove_selectors:
+    - "#header"
+    - "#footer"
+    - "#asks-pagination"
+    - "#pagebox-wrap"
+    - ".pagebox"
+    - "p.headtext"
+    - "p.btn-links"
+    - "p.link-official"
+    - "p.volnum1"
+    - "p.volnum2"
+    - "img[src*='dotlinebox']"
+    - "img[data-savepage-src*='dotlinebox']"
+    - "img[data-savepage-currentsrc*='dotlinebox']"
+    - "style"
+    - "script"
+    - "noscript"
+    - ".clear"
+    - "h1"
+
+citations:
+  superscript_selector: "sup.reference"
+  cite_href_pattern: "#cite_note-(.+)"
+  display_number_attr: null
+  notes_pattern: "^[a-z]$"
+  refs_pattern: "^\\d+$"
+  references_container_selector: ".mw-references-wrap ol.references, ol.references"
+  reference_item_selector: "li"
+  reference_item_id_attr: "id"
+  reference_item_id_prefix: "cite_note-"
+
+elements:
+  infobox_handling: "table"
+  toc_handling: "remove"
+  heading_offset: 0
+  template_selectors: []
+
+links:
+  base_url: "https://www.nintendo.co.jp"
+  external_link_sections: []

@@ -22,8 +22,10 @@ class ImageProcessor:
     def __init__(
         self,
         collector: WarningCollector | None = None,
+        base_url: str = "",
     ):
         self.collector = collector or WarningCollector()
+        self.base_url = base_url
         self._img_counter: dict[str, int] = {}
 
     @staticmethod
@@ -54,15 +56,32 @@ class ImageProcessor:
             src = data_src
 
         # Browser "Save As" sometimes preserves the original CDN URL
-        # in data-savepage-src even when src is rewritten to base64.
-        savepage_src = img.get("data-savepage-src", "")
-        if savepage_src and not self.is_base64(savepage_src):
-            img["src"] = savepage_src
-            src = savepage_src
+        # in data-savepage-currentsrc or data-savepage-src even when src is rewritten to base64.
+        savepage_currentsrc = img.get("data-savepage-currentsrc", "")
+        if (
+            savepage_currentsrc
+            and not self.is_base64(savepage_currentsrc)
+            and savepage_currentsrc.startswith(("http://", "https://"))
+        ):
+            img["src"] = savepage_currentsrc
+            src = savepage_currentsrc
+        else:
+            savepage_src = img.get("data-savepage-src", "")
+            if savepage_src and not self.is_base64(savepage_src):
+                img["src"] = savepage_src
+                src = savepage_src
 
         if not src:
             self.collector.warn("Image with no src attribute", img)
             return
+
+        # Prepend base_url for protocol-relative or root-relative URLs
+        if src.startswith("//"):
+            src = "https:" + src
+            img["src"] = src
+        elif src.startswith("/") and self.base_url:
+            src = self.base_url.rstrip("/") + "/" + src.lstrip("/")
+            img["src"] = src
 
         if self.is_base64(src):
             try:

@@ -9,6 +9,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup, Tag
 
 from .errors import WarningCollector
+from .obsidian import separated_inline_text
 from .strategy import SiteStrategy
 
 
@@ -44,7 +45,8 @@ class Extractor:
         with open(html_path, "r", encoding=self.strategy.encoding) as f:
             html = f.read()
 
-        soup = BeautifulSoup(html, "lxml")
+        parser = getattr(self.strategy, "parser", None) or "html.parser"
+        soup = BeautifulSoup(html, parser)
         title, subtitle = self._extract_title(soup)
         self._clean_dom(soup)
 
@@ -65,12 +67,19 @@ class Extractor:
 
         title_el = soup.select_one(self.strategy.content.title_selector)
         if title_el:
-            title = title_el.get_text(strip=True)
+            title = separated_inline_text(title_el)
+            if not title:
+                img = title_el.find("img")
+                if img:
+                    title = img.get("alt", "").strip()
+
+        if not title and soup.title:
+            title = soup.title.get_text(strip=True)
 
         if self.strategy.content.subtitle_selector:
             sub_el = soup.select_one(self.strategy.content.subtitle_selector)
             if sub_el:
-                subtitle = sub_el.get_text(strip=True)
+                subtitle = separated_inline_text(sub_el)
 
         return title, subtitle
 
@@ -110,6 +119,30 @@ class Extractor:
         # Remove hidden elements
         for el in soup.select("[style*='display:none'], [style*='display: none']"):
             el.decompose()
+
+    @staticmethod
+    def unhide_collapsible_content(root: Tag) -> int:
+        """Drop ``hidden="until-found"`` so collapsed content is converted.
+
+        MediaWiki wraps collapsible infobox sections (and other collapsed
+        blocks) in an element carrying ``hidden="until-found"``. That content
+        is real, renderable content — browsers reveal it on interaction and
+        include it in find-in-page — so it must be converted. The Converter's
+        hidden-element check would otherwise discard the whole subtree,
+        silently dropping rows such as an infobox's regional release dates
+        (and their citations, which then survive only as orphan footnotes).
+
+        ``hidden`` in its bare/true form is left alone: that is genuinely
+        hidden content.
+
+        Returns:
+            Number of elements un-hidden.
+        """
+        count = 0
+        for el in root.find_all(hidden="until-found"):
+            del el["hidden"]
+            count += 1
+        return count
 
     def get_main_content(self, soup: BeautifulSoup) -> Tag | None:
         """Extract the main content element from the page.

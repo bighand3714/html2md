@@ -60,7 +60,9 @@ class Pipeline:
         self.extractor = Extractor(strategy, self.collector)
         self.table_converter = TableConverter(self.collector)
         self.citation_mapper = CitationMapper(strategy.citations, self.collector)
-        self.image_processor = ImageProcessor(self.collector)
+        self.image_processor = ImageProcessor(
+            self.collector, base_url=strategy.links.base_url
+        )
 
     def run(
         self,
@@ -105,6 +107,11 @@ class Pipeline:
                 f"'{self.strategy.content.main_selector}'. Using whole body."
             )
             main_content = soup.find("body") or soup
+
+        # Reveal collapsible content before citations are collected, so that
+        # citations inside collapsed infobox sections are mapped to their
+        # in-text markers instead of surviving as unreferenced footnotes.
+        self.extractor.unhide_collapsible_content(soup)
 
         # Stage 2: Tables - split merged cells
         self.table_converter.split_merged_cells(main_content)

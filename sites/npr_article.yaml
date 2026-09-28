@@ -1,0 +1,54 @@
+name: "NPR Article"
+site_id: npr_article
+url_patterns:
+  - "npr.org"
+meta_selectors:
+  - "meta[property='og:site_name'][content='NPR.org']"
+  - "meta[property='og:url'][content*='npr.org']"
+encoding: utf-8
+
+content:
+  main_selector: "article.story, #storytext"
+  title_selector: "h1"
+  subtitle_selector: "#story-meta"
+  remove_selectors:
+    - "h1"
+    - ".category"
+    - "#story-meta"
+    - "a.enlargebtn"
+    - "b.hide-caption"
+    - "b.toggle-caption"
+    - "span.credit"
+    - ".enlarge_measure"
+    - ".enlarge_html"
+    - ".bucketwrap.internallink"
+    - ".tags"
+    - ".social-wrap"
+    - ".pnnavwrap"
+    - "#commentBlock"
+    - ".audio-module"
+    - ".share-tools"
+    - "style"
+    - "script"
+    - "noscript"
+
+citations:
+  superscript_selector: "sup.reference"
+  cite_href_pattern: "#cite_note-(.+)"
+  display_number_attr: null
+  notes_pattern: "^[a-z]$"
+  refs_pattern: "^\\d+$"
+  references_container_selector: ".mw-references-wrap ol.references, ol.references"
+  reference_item_selector: "li"
+  reference_item_id_attr: "id"
+  reference_item_id_prefix: "cite_note-"
+
+elements:
+  infobox_handling: "table"
+  toc_handling: "remove"
+  heading_offset: 0
+  template_selectors: []
+
+links:
+  base_url: "https://www.npr.org"
+  external_link_sections: []

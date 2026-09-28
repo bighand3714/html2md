@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from bs4 import Comment, NavigableString, Tag
 
 from .errors import WarningCollector
+from .obsidian import separated_inline_text
 from .strategy import SiteStrategy
 
 
@@ -35,7 +36,22 @@ class Converter:
     }
 
     # Tags to skip entirely (their children are processed inline)
-    SKIP_TAGS = {"span", "div"}
+    SKIP_TAGS = {"span", "div", "ruby"}
+
+    # Block-level tags that occupy their own line inside a table cell. A block
+    # child must be separated from whatever precedes it in the cell, otherwise
+    # Wikipedia's infobox caption glues onto the image above it:
+    #   "[![](cover.jpg)](File:cover.jpg)North American cover art"
+    CELL_BLOCK_TAGS = {
+        "div", "p", "figcaption", "figure", "section", "aside", "blockquote",
+    }
+
+    # MediaWiki thumbnail wrappers: both the classic "thumb" markup and the
+    # multiple-image template ({{multiple image}}) nest the media in <div>s,
+    # with the image in .thumbimage and its caption in a sibling .thumbcaption.
+    THUMB_BLOCK_CLASSES = {"thumb", "tmulti", "thumbinner", "multiimageinner"}
+    THUMB_CONTAINER_CLASSES = THUMB_BLOCK_CLASSES | {"trow", "tsingle"}
+    THUMB_CAPTION_CLASSES = {"thumbcaption", "theader"}
 
     def __init__(
         self,
@@ -102,7 +118,19 @@ class Converter:
             "figcaption": lambda e: f"\n*{self._children_text(e)}*\n",
             "table": self._table_to_md,
             "aside": self._infobox_to_md,
+            "rt": lambda e: "" if "katakana-terminator-rt" in e.get("class", []) or not e.get_text(strip=True) else f"({self._children_text(e)})",
+            "rp": lambda e: "",
         }
+
+        # Check for dialogue boxes (e.g. Nintendo interview / Iwata Asks)
+        if tag_name == "div" and "int-box" in element.get("class", []):
+            return self._int_box_to_md(element)
+
+        # Check for MediaWiki thumbnail blocks (classic "thumb" markup and the
+        # multiple-image template) — their images and captions must become
+        # separate lines instead of one run-on paragraph.
+        if tag_name == "div" and self._is_thumb_block(element):
+            return self._thumb_to_md(element)
 
         handler = handlers.get(tag_name)
         if handler:
@@ -121,8 +149,46 @@ class Converter:
         """Convert h1-h6 to Markdown heading with level offset."""
         level = int(element.name[1]) + self._heading_offset
         level = min(level, 6)  # Markdown only supports h1-h6
+        img = element.find("img")
+        if img and not element.get_text(strip=True):
+            alt = img.get("alt", "").strip()
+            if alt:
+                return f"\n\n{'#' * level} {alt}\n\n"
         text = " ".join(self._children_text(element).split())
         return f"\n\n{'#' * level} {text}\n\n"
+
+    def _int_box_to_md(self, element: Tag) -> str:
+        """Convert an interview dialogue box (<div class='int-box'>) to Markdown."""
+        name_div = element.find("div", class_="int-name")
+        text_div = element.find("div", class_="int-text")
+        speaker = name_div.get_text(strip=True) if name_div else ""
+
+        notes = []
+        if text_div:
+            for nb in text_div.find_all("div", class_="notes-box"):
+                num_tag = nb.find("div", class_="notes-num")
+                txt_tag = nb.find("div", class_="notes-text")
+                num = num_tag.get_text(strip=True) if num_tag else ""
+                txt = self._children_text(txt_tag).strip() if txt_tag else ""
+                notes.append(f"*{num} {txt}*")
+                nb.decompose()
+
+        speech = self._children_text(text_div).strip() if text_div else ""
+        speech = re.sub(r'[ \t]*\n[ \t]*', '\n', speech)
+        speech = re.sub(r'\n{2,}', '\n', speech)
+
+        res = []
+        if speaker and speech:
+            res.append(f"**{speaker}：** {speech}")
+        elif speech:
+            res.append(speech)
+
+        for n in notes:
+            res.append(n)
+
+        if not res:
+            return ""
+        return "\n\n" + "\n\n".join(res) + "\n\n"
 
     # ------------------------------------------------------------------
     # Paragraph
@@ -182,10 +248,28 @@ class Converter:
                 prefix = f"{i + 1}. "
             else:
                 prefix = "- "
-            text = self._children_text(li)
+            text = self._indent_item_content(self._children_text(li), len(prefix))
             lines.append(f"{prefix}{text}")
 
         return "\n\n" + "\n".join(lines) + "\n\n"
+
+    @staticmethod
+    def _indent_item_content(text: str, prefix_width: int) -> str:
+        """Keep a list item's block content *inside* the item.
+
+        An <li> can hold block content: a thumbnail block (picture +
+        caption), a nested list, a second paragraph. Markdown only keeps such
+        content inside the item when every following line is indented to the
+        item's content column. Indented wrongly, the picture lands *beside* the
+        bullet — leaving an empty "- " behind and a stray paragraph after the
+        list.
+        """
+        lines = text.strip("\n").split("\n")
+        if len(lines) == 1:
+            return lines[0].strip()
+        pad = " " * (prefix_width + 2)
+        continuation = [pad + line if line.strip() else "" for line in lines[1:]]
+        return "\n".join([lines[0].strip(), *continuation])
 
     def _li_to_md(self, element: Tag) -> str:
         """Convert <li> text (used when li is processed via _list_to_md)."""
@@ -211,16 +295,11 @@ class Converter:
             # Single image link: [![](src)](href)
             src = img.get("src", "")
             alt = img.get("alt", "")
+            # Resolve relative URLs for images inside links
             if self._base_url and src and not src.startswith(("http://", "https://", "data:", "img/")):
                 src = urljoin(self._base_url, src)
-            # Apply display width for Wikipedia Special:FilePath images.
-            # Escaped pipe (\|) avoids table column-separator conflicts.
-            # Image link markdown is inline; block-level spacing is
-            # handled by the parent handler (_figure_to_md, _para_to_md).
-            width = img.get("width", "")
-            if width and "Special:FilePath" in src:
-                return f"[![{alt}\\|{width}]({src})]({href})"
-            return f"[![{alt}]({src})]({href})"
+            img_md = self._render_img_markdown(img, src, alt)
+            return f"[{img_md}]({href})"
 
         text = self._children_text(element)
         if not text:
@@ -233,15 +312,130 @@ class Converter:
 
         return f"[{text}]({href})"
 
+    def _infer_image_width(self, element: Tag, src: str) -> str:
+        """Infer an appropriate display width for an image in Obsidian syntax.
+
+        Sources of width information:
+        1. Explicit HTML width attribute on <img> (e.g. Wikipedia/Wiki pages).
+        2. Table cells (e.g. Damage_4.gif heart icons) -> 16px.
+        3. CSS grid / column container classes from walkthrough cards:
+           - .scrn.cols-2 or .outwrap -> 360px (side-by-side screenshots)
+           - .md-4, .sm-8 in .wt-row -> 320px (room step screenshots)
+           - .md-2, .sm-4 in .wt-row:
+               - Item icon -> 40px
+               - Mini-map -> 100px
+               - Default -> 80px
+           - .sm-3 in .wt-row -> 60px (enemy sprite icons)
+           - Large map banners -> 680px
+        """
+        # 1. Direct width attribute
+        width = element.get("width", "")
+        if width:
+            clean_w = str(width).replace("px", "").strip()
+            if clean_w.isdigit():
+                return clean_w
+
+        # 2. Heart icon in table or anywhere
+        if "Damage_4" in src or element.find_parent("td") or element.find_parent("th"):
+            return "16"
+
+        # 3. Contextual inferencing from parent layout classes
+        p = element.parent
+        parent_classes: list[str] = []
+        depth = 0
+        while p and p.name not in ("body", "[document]") and depth < 6:
+            cls = p.get("class", [])
+            if isinstance(cls, list):
+                parent_classes.extend(cls)
+            elif isinstance(cls, str):
+                parent_classes.extend(cls.split())
+            p = p.parent
+            depth += 1
+
+        p_classes_set = set(parent_classes)
+
+        # Side-by-side screenshots (e.g. .scrn.cols-2 or .outwrap)
+        if "cols-2" in p_classes_set or "outwrap" in p_classes_set:
+            return "360"
+
+        # Room step screenshots (inside .md-4 or .sm-8 in .wt-row)
+        if any(c in p_classes_set for c in ("md-4", "sm-8")):
+            return "320"
+
+        # Left column in step card: mini-maps or item icons (.md-2 or .sm-4)
+        if any(c in p_classes_set for c in ("md-2", "sm-4")):
+            if "Item" in src or "Items" in src:
+                return "40"
+            if "Map" in src or "EagleMap" in src or "DMMap" in src:
+                return "100"
+            return "80"
+
+        # Enemy icons list in step card (.sm-3)
+        if "sm-3" in p_classes_set:
+            return "60"
+
+        # Large map banners
+        if any(k in src for k in ("Map-1", "Eagle-Map", "Death-Mountain-Map")):
+            return "680"
+
+        return ""
+
+    def _render_img_markdown(self, img_tag: Tag, src: str, alt: str) -> str:
+        """Render image markdown with appropriate width constraint.
+
+        Inside a Markdown table cell the width pipe must be backslash-escaped
+        (``\\|``), otherwise the table parser reads it as a column separator
+        and the row is ripped apart. "Inside a table" means the image ends up
+        in a Markdown table, which covers three sources:
+
+        1. a real ``<table>``,
+        2. a ``.pi-data`` cell of a portable infobox,
+        3. anything inside an ``aside.portable-infobox`` — the whole infobox
+           is emitted as Markdown tables, so even non-``.pi-data`` images
+           inside it need escaping.
+        """
+        width = self._clean_width(self._infer_image_width(img_tag, src))
+        in_table = self._renders_into_table(img_tag)
+        pipe = "\\|" if in_table else "|"
+
+        # An escaped pipe in the alt text would double-escape to "\\|", which
+        # leaks a literal backslash into the rendered image label.
+        alt = alt.replace("\\|", "|")
+
+        if width:
+            return f"![{alt}{pipe}{width}]({src})"
+        return f"![{alt}]({src})"
+
+    @staticmethod
+    def _clean_width(width: str) -> str:
+        """Return the width constraint, recovering it from the alt text.
+
+        SingleFile saves put image widths in a ``\\|``-joined alt attribute
+        (e.g. ``alt="\\|250"``) alongside a ``width="250"`` attribute. If the
+        alt is all that survived, use it so Obsidian still sizes the image.
+        """
+        w = str(width).strip()
+        if w.isdigit() and w != "0":
+            return w
+        return ""
+
+    @staticmethod
+    def _renders_into_table(element: Tag) -> bool:
+        """Whether this element's Markdown lands inside a Markdown table."""
+        p = element.parent
+        while p is not None:
+            if p.name == "table":
+                return True
+            classes = p.get("class") or []
+            if "pi-data" in classes or "portable-infobox" in classes:
+                return True
+            p = p.parent
+        return False
+
     def _image_to_md(self, element: Tag) -> str:
         """Convert <img> to ![](url).
 
-        Wikipedia Special:FilePath URLs return full-resolution originals
-        (e.g. 4480px wide). We apply the HTML width attribute via
-        Obsidian's |WIDTH syntax so images render at the intended size.
-        Fandom and other CDN images (which already serve resized
-        thumbnails) are not affected.
-
+        Applies width constraints using Obsidian's |WIDTH syntax.
         Image markdown is inline by nature; block-level spacing is
         handled by the parent handler (_figure_to_md, _para_to_md).
         """
@@ -255,13 +449,7 @@ class Converter:
         if self._base_url and not src.startswith(("http://", "https://", "data:", "img/")):
             src = urljoin(self._base_url, src)
 
-        # Apply display width for Wikipedia images (special:filepath returns original).
-        # Escaped pipe (\|) avoids table column-separator conflicts.
-        width = element.get("width", "")
-        if width and "Special:FilePath" in src:
-            return f"![{alt}\\|{width}]({src})"
-
-        return f"![{alt}]({src})"
+        return self._render_img_markdown(element, src, alt)
 
     # ------------------------------------------------------------------
     # Code blocks
@@ -318,6 +506,69 @@ class Converter:
         return self._children_text(element).strip()
 
     # ------------------------------------------------------------------
+    # Thumbnails (classic "thumb" markup, multiple-image template)
+    # ------------------------------------------------------------------
+
+    def _is_thumb_block(self, element: Tag) -> bool:
+        """Whether a <div> is the wrapper of a thumbnail/multi-image block."""
+        classes = element.get("class") or []
+        return bool(self.THUMB_BLOCK_CLASSES.intersection(classes))
+
+    def _thumb_to_md(self, element: Tag) -> str:
+        """Convert a thumbnail block so image and caption get their own lines.
+
+        <figure typeof="mw:File/Thumb"> is handled by _figure_to_md, but pages
+        rendered without Parsoid (and the {{multiple image}} template) nest the
+        media one level deeper::
+
+            div.thumb[.tmulti] > div.thumbinner > div.trow > div.tsingle
+                > div.thumbimage   (the picture)
+                > div.thumbcaption (its caption, a sibling <div>)
+
+        Those <div>s are transparent to this converter, so the whole block used
+        to collapse into a single run-on paragraph::
+
+            Maps of [Hyrule](…)![map](…)Map of Hyrule, as seen in *Ocarina of
+            Time*![map2](…)Map of Hyrule, as seen in *Breath of the Wild* (…)
+
+        Emitting every pane (group header, picture, caption) as its own block
+        restores the layout, matching _figure_to_md's output.
+        """
+        parts = self._thumb_parts(element)
+        if not parts:
+            return ""
+        return "\n\n" + "\n\n".join(parts) + "\n\n"
+
+    def _thumb_parts(self, element: Tag) -> list[str]:
+        """Collect, in document order, the visual blocks of a thumbnail.
+
+        Structural wrappers (.thumb, .tmulti, .thumbinner, .trow, .tsingle)
+        are descended into; everything else — .thumbimage, .thumbcaption,
+        .theader, or an unexpected element — becomes one block of its own.
+        """
+        parts: list[str] = []
+        for child in element.children:
+            if not isinstance(child, Tag) or isinstance(child, Comment):
+                continue
+            if child.name == "br":
+                continue
+
+            classes = set(child.get("class") or [])
+            if classes & self.THUMB_CAPTION_CLASSES:
+                caption = self._figcaption_to_md(child)
+                if caption:
+                    parts.append(caption)
+                continue
+            if classes & self.THUMB_CONTAINER_CLASSES:
+                parts.extend(self._thumb_parts(child))
+                continue
+
+            rendered = self._convert_element(child).strip()
+            if rendered:
+                parts.append(rendered)
+        return parts
+
+    # ------------------------------------------------------------------
     # Tables (delegates to TableConverter)
     # ------------------------------------------------------------------
 
@@ -366,13 +617,30 @@ class Converter:
         """Extract cell content, converting <br> and nested newlines
         to MD-compatible inline line breaks."""
         parts: list[str] = []
+        has_content = False
         for child in element.children:
             if isinstance(child, NavigableString):
-                parts.append(str(child))
+                chunk = str(child)
             elif child.name == "br":
-                parts.append("<br>")
+                chunk = "<br>"
             else:
-                parts.append(self._convert_element(child))
+                chunk = self._convert_element(child)
+                # A block-level child (Wikipedia's <div class="infobox-caption">,
+                # <p>, <figcaption>, ...) is its own line inside the cell. Emit a
+                # break before it, or it runs into the image above:
+                #   "[![](cover.jpg)](File:cover.jpg)North American cover art"
+                # Children that already open with a blank line (figure, list)
+                # bring their own break, so they are left untouched.
+                if (
+                    chunk.strip()
+                    and has_content
+                    and child.name in self.CELL_BLOCK_TAGS
+                    and not chunk.startswith("\n")
+                ):
+                    parts.append("<br>")
+            parts.append(chunk)
+            if chunk.strip():
+                has_content = True
         text = "".join(parts).strip()
         # Convert newlines from nested elements (ul/li etc.) to <br>
         text = text.replace("\n", "<br>")
@@ -418,7 +686,7 @@ class Converter:
         for data in element.select(":scope > .pi-data"):
             label_el = data.select_one(".pi-data-label")
             value_el = data.select_one(".pi-data-value")
-            label = label_el.get_text(strip=True) if label_el else ""
+            label = separated_inline_text(label_el) if label_el else ""
             value = self._table_cell_text(value_el).strip() if value_el else ""
             if label or value:
                 direct_rows.append((label, value))
@@ -428,13 +696,13 @@ class Converter:
         # Grouped key-value rows
         for group in element.select(".pi-group"):
             header = group.select_one(".pi-header")
-            header_text = header.get_text(strip=True) if header else ""
+            header_text = separated_inline_text(header) if header else ""
 
             rows: list[tuple[str, str]] = []
             for data in group.select(".pi-data"):
                 label_el = data.select_one(".pi-data-label")
                 value_el = data.select_one(".pi-data-value")
-                label = label_el.get_text(strip=True) if label_el else ""
+                label = separated_inline_text(label_el) if label_el else ""
                 value = self._table_cell_text(value_el).strip() if value_el else ""
                 if label or value:
                     rows.append((label, value))

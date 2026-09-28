@@ -9,6 +9,7 @@ from html2md.obsidian import (
     format_footnote_definition,
     format_footnote_ref_marker,
     make_footnote_ref,
+    separated_inline_text,
 )
 from html2md.strategy import CitationConfig
 
@@ -104,6 +105,33 @@ class TestCitationMapper:
         assert "note_a" not in used
         assert len(used) == 0
 
+    def test_nested_li_inside_citation_is_not_a_citation(self, mapper):
+        """Only direct children of the references container are entries.
+
+        Wikipedia nests <ul><li id="mwXXXX"> inside a citation's own text
+        (span.mw-reference-text). Those ids are not citation ids and must not
+        be collected, otherwise they surface as bogus orphan footnotes.
+        """
+        soup = BeautifulSoup("""
+        <html><body>
+        <p>Text<sup class="reference"><a href="#cite_note-120">[120]</a></sup>.</p>
+        <div class="mw-references-wrap">
+        <ol class="mw-references references">
+        <li id="cite_note-120" data-mw-footnote-number="120">
+          <span class="mw-reference-text">Interview, archived from
+            <ul><li id="mwCY8">the original</li></ul>
+          </span>
+        </li>
+        </ol></div>
+        </body></html>
+        """, "lxml")
+
+        citations = mapper.collect_bottom_references(soup)
+
+        assert "120" in citations
+        assert "mwCY8" not in citations
+        assert len(citations) == 1
+
     def test_duplicate_references(self, mapper):
         """Same citation used twice should get same footnote ID."""
         soup = BeautifulSoup("""
@@ -157,6 +185,29 @@ class TestCitationMapper:
 class TestObsidianFormatting:
     """Test Obsidian footnote formatting helpers."""
 
+    def test_separated_inline_text_keeps_space_before_inline_tag(self):
+        """A space between text and an inline child must survive.
+
+        get_text(strip=True) would return "The Legend of Zelda(video game)".
+        """
+        soup = BeautifulSoup(
+            "<h1><i>The Legend of Zelda</i> (video game)</h1>", "lxml"
+        )
+        assert (
+            separated_inline_text(soup.h1)
+            == "The Legend of Zelda (video game)"
+        )
+
+    def test_separated_inline_text_normalizes_whitespace(self):
+        soup = BeautifulSoup(
+            "<h1>\n  <i>A</i>\n  B\n</h1>", "lxml"
+        )
+        assert separated_inline_text(soup.h1) == "A B"
+
+    def test_separated_inline_text_separates_adjacent_tags(self):
+        soup = BeautifulSoup("<p><b>Bold</b><i>Italic</i></p>", "lxml")
+        assert separated_inline_text(soup.p) == "Bold Italic"
+
     def test_make_footnote_ref_note(self):
         assert make_footnote_ref("a", is_note=True) == "note_a"
         assert make_footnote_ref("b", is_note=True) == "note_b"
@@ -186,3 +237,59 @@ class TestObsidianFormatting:
     def test_empty_refs_section(self):
         from html2md.obsidian import format_references_section
         assert format_references_section([]) == ""
+
+
+class TestNamedCitationIds:
+    """Named/non-numeric citation IDs (e.g. ZeldaWiki's "Jump up to: 1.0")."""
+
+    @pytest.fixture
+    def mapper(self):
+        # ZeldaWiki-style config: no data-mw-footnote-number, so the display
+        # name is parsed from the backlink text instead.
+        return CitationMapper(CitationConfig(
+            superscript_selector="sup.reference",
+            cite_href_pattern=r"#cite_note-(.+)",
+            display_number_attr=None,
+            notes_pattern=r"^[a-z]$",
+            refs_pattern=r"^\d+$",
+            references_container_selector="ol.references",
+            reference_item_selector="li",
+            reference_item_id_attr="id",
+            reference_item_id_prefix="cite_note-",
+        ))
+
+    HTML = """
+    <html><body>
+    <p>Released in 1986<sup class="reference">
+      <a href="#cite_note-E_218-1">[1]</a></sup>.</p>
+    <div class="zw-references"><ol class="references">
+      <li id="cite_note-E_218-1"><span class="mw-cite-backlink">&uarr;
+        <sup><a href="#cite_ref-E_218_1-0"><span
+          class="cite-accessibility-label">Jump up to: </span>1.0</a></sup>
+      </span> <span class="reference-text">Encyclopedia entry</span></li>
+    </ol></div>
+    </body></html>
+    """
+
+    def test_backlink_accessibility_label_keeps_its_space(self, mapper):
+        citations = mapper.collect_bottom_references(
+            BeautifulSoup(self.HTML, "lxml")
+        )
+        citation = citations["E_218-1"]
+        # "Jump up to: " + "1.0" — the space must not be swallowed.
+        assert citation.display_name == "Jump up to: 1.0"
+        # Sanitized form used by make_footnote_ref
+        assert make_footnote_ref(
+            citation.display_name, citation.is_note
+        ) == "ref_Jump_up_to_1.0"
+
+    def test_definition_id_matches_marker_id(self, mapper):
+        """In-text [^ref_X] and its definition [^ref_X]: must agree."""
+        soup = BeautifulSoup(self.HTML, "lxml")
+        citations = mapper.collect_bottom_references(soup)
+        used = mapper.replace_superscripts(soup, citations)
+        _notes_md, refs_md = mapper.generate_footnote_definitions(used)
+
+        assert "[^ref_Jump_up_to_1.0]" in soup.body.get_text()
+        assert "[^ref_Jump_up_to_1.0]:" in refs_md
+        assert "Encyclopedia entry" in refs_md

@@ -1,0 +1,45 @@
+name: "Zelda Dungeon Walkthrough"
+site_id: zeldadungeon_walkthrough
+url_patterns:
+  - "zeldadungeon.net"
+meta_selectors:
+  - "meta[property='og:site_name'][content='Zelda Dungeon']"
+encoding: utf-8
+
+content:
+  main_selector: ".page-content .walkthrough, .page-content"
+  title_selector: ".page-title h1, h1"
+  subtitle_selector: null
+  remove_selectors:
+    - ".walkthrough > ul"
+    - "#mobilenav"
+    - "#header"
+    - "#footer"
+    - "#disqus_thread"
+    - ".news-readmore"
+    - ".share-buttons"
+    - ".breadcrumb"
+    - ".check-layout"
+    - "style"
+    - "script"
+
+citations:
+  superscript_selector: "sup.reference"
+  cite_href_pattern: "#cite_note-(.+)"
+  display_number_attr: null
+  notes_pattern: "^[a-z]$"
+  refs_pattern: "^\\d+$"
+  references_container_selector: ".mw-references-wrap ol.references, ol.references"
+  reference_item_selector: "li"
+  reference_item_id_attr: "id"
+  reference_item_id_prefix: "cite_note-"
+
+elements:
+  infobox_handling: "table"
+  toc_handling: "remove"
+  heading_offset: 0
+  template_selectors: []
+
+links:
+  base_url: "https://www.zeldadungeon.net"
+  external_link_sections: []
