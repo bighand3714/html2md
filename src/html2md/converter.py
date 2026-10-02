@@ -18,6 +18,33 @@ from .obsidian import separated_inline_text
 from .strategy import SiteStrategy
 
 
+_IMG_MD = r"!\[[^\]]*\]\([^)]*\)"
+_LINKED_IMG_MD = r"\[" + _IMG_MD + r"\]\([^)]*\)"
+# 段首图片后紧跟字母/汉字。刻意排除 `[` 与 `!`：前者是"可点图标 + 标签"
+# （ZeldaWiki 快捷导航、姊妹项目框），后者是"多图并排"，两者都该保持相邻。
+_LEADING_GLUED_IMAGE = re.compile(
+    rf"^(?:{_LINKED_IMG_MD}|{_IMG_MD})(?=[A-Za-z\u4e00-\u9fff])"
+)
+
+
+def split_leading_glued_image(text: str) -> str:
+    """段首图片与紧随其后的正文粘在一起时，在两者之间补一个空行。
+
+    源页常见 `<p><img src="candle.png" align="right">文字…</p>`：小图标在段首、
+    后面直接接正文。图片在 Markdown 里是行内元素，不补换行就会粘在第一个字上，
+    渲染成 `![](icon.png)文字`。
+
+    只在"图片位于段首 **且** 紧跟字母或汉字"时生效，因此：
+      - `[![](icon)](file)[标签](url)` 图标 + 标签 → 不动
+      - `![](a.png)![](b.png)` 多图并排 → 不动
+      - 正文中间的行内图标（图片不在段首）→ 不动
+    """
+    m = _LEADING_GLUED_IMAGE.match(text)
+    if not m:
+        return text
+    return f"{m.group(0)}\n\n{text[m.end():]}"
+
+
 class Converter:
     """Convert cleaned HTML DOM to Markdown text."""
 
@@ -208,6 +235,9 @@ class Converter:
         text = text.strip()
         if not text:
             return ""
+        # 段首图片若与紧随其后的正文粘在一起，补一个换行（必须放在上面的
+        # 空白规整之后，否则 \n\n 又会被折叠掉）
+        text = split_leading_glued_image(text)
         return f"\n\n{text}\n\n"
 
     # ------------------------------------------------------------------
