@@ -59,7 +59,9 @@ class Pipeline:
         # Initialize pipeline components
         self.extractor = Extractor(strategy, self.collector)
         self.table_converter = TableConverter(self.collector)
-        self.citation_mapper = CitationMapper(strategy.citations, self.collector)
+        self.citation_mapper = CitationMapper(
+            strategy.citations, self.collector, base_url=strategy.links.base_url
+        )
         self.image_processor = ImageProcessor(
             self.collector, base_url=strategy.links.base_url
         )
@@ -98,6 +100,10 @@ class Pipeline:
                 from urllib.parse import urlparse
                 parsed = urlparse(canonical["href"])
                 self.strategy.links.base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+        # 回填给引用模块：脚注里的站内相对链接（/wiki/XXX）也要绝对化
+        self.citation_mapper.base_url = self.strategy.links.base_url
+        self.image_processor.base_url = self.strategy.links.base_url
 
         # Get the main content area
         main_content = self.extractor.get_main_content(soup)

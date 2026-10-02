@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from urllib.parse import urljoin
 
 from bs4 import NavigableString, Tag
 
@@ -58,9 +59,13 @@ class CitationMapper:
         self,
         config: "CitationConfig",
         collector: WarningCollector | None = None,
+        base_url: str = "",
     ):
         self.config = config
         self.collector = collector or WarningCollector()
+        # 站点根。脚注里的站内相对链接（`/wiki/XXX`）需要它才能绝对化，
+        # 否则到了 Obsidian 里就是断链。Pipeline 在解析出 base_url 后会回填。
+        self.base_url = base_url
         # Compile patterns
         self._cite_href_re = re.compile(config.cite_href_pattern)
         self._notes_re = re.compile(config.notes_pattern) if config.notes_pattern else None
@@ -230,12 +235,28 @@ class CitationMapper:
             href = link.get("href", "")
             text = link.get_text(strip=True)
             if href and text:
-                link.replace_with(f"[{text}]({href})")
+                link.replace_with(f"[{text}]({self._absolutize(href)})")
             elif text:
                 link.replace_with(text)
 
         text = clone.get_text(separator=" ", strip=True)
         return clean_inline_html(text)
+
+    def _absolutize(self, href: str) -> str:
+        """把站内相对链接补成绝对 URL；其它情况原样返回。
+
+        注意协议相对 URL（`//host/path`）：浏览器里能解析，但在 Obsidian 的
+        链接里会被当成相对路径，所以显式补上 `https:`。
+        """
+        if not href:
+            return href
+        if href.startswith("//"):
+            return "https:" + href
+        if not self.base_url:
+            return href
+        if href.startswith(("http://", "https://", "#", "mailto:")):
+            return href
+        return urljoin(self.base_url, href)
 
 
     # ------------------------------------------------------------------
