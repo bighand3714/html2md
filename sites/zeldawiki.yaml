@@ -45,6 +45,11 @@ elements:
     - ".NavFrame"
 
 links:
-  base_url: "https://www.zeldadungeon.net"
+  # 必须留空：本策略同时服务 zeldawiki.wiki 与 zeldadungeon.net 的 wiki 页，
+  # 写死任一个域名都会把另一边的站内相对链接（/wiki/XXX）拼到错误的站上
+  # ——实测写死 zeldadungeon.net 后，zeldawiki.wiki 页面的 300+ 条 /wiki/ 链接
+  # 全被拼到 zeldadungeon.net，点开提示"没有页面使用该文件"。
+  # 留空时 Pipeline 会从页面自带的 <link rel="canonical"> 自动探测，两边都对。
+  base_url: ""
   external_link_sections:
     - "#External_links"
